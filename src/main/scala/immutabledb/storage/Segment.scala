@@ -51,7 +51,7 @@ object SegmentMeta {
 }
 
 
-class SegmentWriter[T <: DataType](id: Int, codec: Codec[T], column: Column) extends Closeable {
+class SegmentWriter[A, T <: DataType[A]](id: Int, codec: Codec[A], column: Column) extends Closeable {
     /**
       * This is a counter of how many blocks are in a segment
       */
@@ -101,7 +101,7 @@ class SegmentWriter[T <: DataType](id: Int, codec: Codec[T], column: Column) ext
 }
 
 
-class Segment[T <: DataType](id: Int, codec: Codec[T], column: Column) extends Iterable[Array[T#A]] {
+class Segment[A, T <: DataType[A]](id: Int, codec: Codec[A], column: Column) extends Iterable[Array[A]] {
     val segmentFile = new RandomAccessFile(column.path / s"${column.name}_$id.dat", "r")
     val segmentMetaFile = new File(column.path / s"${column.name}_$id.meta")
 
@@ -111,11 +111,11 @@ class Segment[T <: DataType](id: Int, codec: Codec[T], column: Column) extends I
 
     def iterator = new BlockIterator
 
-    class BlockIterator extends Iterator[Array[T#A]] {
+    class BlockIterator extends Iterator[Array[A]] {
         segmentData.rewind
         var position = 0
 
-        def next: Array[T#A] = {
+        def next: Array[A] = {
             val startByte = position * 2
             val endByte = position * 2 + 1
             val bytes = new Array[Byte](meta.blockOffsets(endByte) - meta.blockOffsets(startByte))

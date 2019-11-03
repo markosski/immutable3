@@ -10,11 +10,7 @@ import scala.reflect.ClassTag
 /**
   * Created by marcin1 on 2/21/17.
   */
-class DenseCodec[T <: DataType](val dtype: T)(implicit tag: ClassTag[T#A]) extends Codec[T] {
-    /**
-      * @param values
-      * @return
-      */
+class DenseCodec[A, T <: DataType[A]](val dtype: T)(implicit tag: ClassTag[A]) extends Codec[A] {
     def encode(values: Array[String]) = {
         val result = new ByteArrayOutputStream()
 
@@ -25,8 +21,8 @@ class DenseCodec[T <: DataType](val dtype: T)(implicit tag: ClassTag[T#A]) exten
         result
     }
 
-    def decode(dataSize: Int, data: ByteArrayInputStream): Array[T#A] = {
-        val segment = new Array[T#A](dataSize)
+    def decode(dataSize: Int, data: ByteArrayInputStream): Array[A] = {
+        val segment = new Array[A](dataSize)
         val chunk = new Array[Byte](dtype.size)
 
         var i = 0

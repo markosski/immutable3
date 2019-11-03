@@ -1,13 +1,6 @@
 package immutabledb
 
-/**
-  * Created by marcin1 on 2/21/17.
-  */
-
-trait DataType {
-    type A
-    implicit def tag: reflect.ClassTag[A]
-
+trait DataType[A] {
     val size: Int
     val nullRepr: A
     def stringToValue(s: String): A
@@ -18,16 +11,13 @@ trait DataType {
     }
 }
 
-trait NumericDataType extends DataType {
+trait NumericDataType[A] extends DataType[A] {
     implicit val numOps: Numeric[A]
     val minVal: A
     val maxVal: A
 }
 
-case object IntType extends NumericDataType {
-    type A = Int
-    def tag = reflect.classTag[Int]
-
+case object IntType extends NumericDataType[Int] {
     val numOps = implicitly[Numeric[Int]]
     val size = 4
     val minVal = Int.MinValue + 1
@@ -38,10 +28,7 @@ case object IntType extends NumericDataType {
     def bytesToValue(bytes: Array[Byte]): Int = bytes.reverse.foldLeft(0)((x, b) => (x << 8) + (b & 0xFF))
 }
 
-case object TinyIntType extends NumericDataType {
-    type A = Byte
-    def tag = reflect.classTag[Byte]
-
+case object TinyIntType extends NumericDataType[Byte] {
     val numOps = implicitly[Numeric[Byte]]
     val size = 1
     val minVal = Byte.MinValue + 1
@@ -52,10 +39,7 @@ case object TinyIntType extends NumericDataType {
     def bytesToValue(bytes: Array[Byte]): Byte = bytes(0)
 }
 
-case class CharType(size: Int) extends DataType {
-    type A = String
-    def tag = reflect.classTag[String]
-
+case class TextType(size: Int) extends DataType[String] {
     val nullRepr: String = "\\N"
     def stringToValue(s: String): String = s
     def valueToBytes(value: String): Array[Byte] = ???

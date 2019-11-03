@@ -9,9 +9,9 @@ Columnar store with inverted indexes.
 - apache commons
 - guava
 
-# Objects and Modules
+# Concepts
 - Table
-    Stores information about what columns belong to the table.
+    Stores information about what columns are in the table.
     - path to directory with columns/segments
     - returns columns belonging to table
 
