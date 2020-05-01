@@ -4,6 +4,12 @@ package immutabledb
   * Created by marcin1 on 2/21/17.
   */
 
+object DType extends Enumeration {
+  type DType = Value
+  val INT, TINY_INT, STRING = Value
+}
+
+
 trait DataType {
     type A
     implicit def tag: reflect.ClassTag[A]
@@ -13,9 +19,7 @@ trait DataType {
     def stringToValue(s: String): A
     def valueToBytes(value: A): Array[Byte]
     def bytesToValue(bytes: Array[Byte]): A
-    def stringToBytes(s: String): Array[Byte] = {
-        valueToBytes(stringToValue(s))
-    }
+    def stringToBytes(s: String): Array[Byte] = valueToBytes(stringToValue(s))
 }
 
 trait NumericDataType extends DataType {
@@ -52,14 +56,14 @@ case object TinyIntType extends NumericDataType {
     def bytesToValue(bytes: Array[Byte]): Byte = bytes(0)
 }
 
-case class CharType(size: Int) extends DataType {
+case class StringType(val size: Int) extends DataType {
     type A = String
     def tag = reflect.classTag[String]
 
     val nullRepr: String = "\\N"
     def stringToValue(s: String): String = s
-    def valueToBytes(value: String): Array[Byte] = ???
-    def bytesToValue(bytes: Array[Byte]): String = ???
+    def valueToBytes(value: String): Array[Byte] = value.getBytes()
+    def bytesToValue(bytes: Array[Byte]): String = new String(bytes)
 }
 
 //trait DType {

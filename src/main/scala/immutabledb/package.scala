@@ -2,6 +2,6 @@
   * Created by marcin1 on 7/23/17.
   */
 package object immutabledb {
-    import immutabledb.vector._
-    import immutabledb.column._
+    import immutabledb._
+    import immutabledb.storage._
 }
