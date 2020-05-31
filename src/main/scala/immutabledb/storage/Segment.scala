@@ -63,15 +63,17 @@ class SegmentWriter[E <: ConfigEnv](id: Int, blockSize: Int, tableName: String, 
     /**
       * This is a counter of how many blocks are in a segment
       */
-    val codec = Column.getCodec(column)
-    val segmentPath = env.config.dataDir / tableName / s"${column.name}_$id.dat"
-    val segmentMetaPath = env.config.dataDir / tableName / s"${column.name}_$id.meta"
-    val segmentFile: RandomAccessFile = new RandomAccessFile(segmentPath, "rw")
-    var blockBuffer: ByteBuffer = ByteBuffer.allocate(blockSize * codec.dtype.size)
+    private val codec = Column.getCodec(column)
+    private val segmentPath = env.config.dataDir / tableName / s"${column.name}_$id.dat"
+    private val segmentMetaPath = env.config.dataDir / tableName / s"${column.name}_$id.meta"
+    private val segmentFile: RandomAccessFile = new RandomAccessFile(segmentPath, "rw")
+
+    // TODO: buffer should be dynamic as some codecs will not have even byte size like dense codecs
+    private var blockBuffer: ByteBuffer = ByteBuffer.allocate(blockSize * codec.dtype.size)
 
     /**
       * Block offsets are stored as continous sequence.
-      * For example idx 0 and 1 are starting byte and ending byte of 1st block, idx 2 and 3 - 2nd block etc.
+      * For example idx 0 and 1 are starting byte and ending byte of 1st byte block, idx 2 and 3 - 2nd block etc.
       */
     val blockBufferOffsets: Buffer[Int] = Buffer[Int]()
     blockBufferOffsets += 0 // first block 0 at byte offset 0
@@ -94,11 +96,11 @@ class SegmentWriter[E <: ConfigEnv](id: Int, blockSize: Int, tableName: String, 
 
     def flush(): Unit = {
         val encoded = codec.encode(blockBuffer.array).toByteArray
+        blockBuffer.clear()
         segmentFile.write(encoded)
-        blockBuffer.clear
 
         blockBufferOffsets += blockBufferOffsets(blockBufferOffsets.size - 1) + encoded.size
-        logger.info(s"column: ${column.name}, size: ${blockBufferOffsets.size}, segmentFile: ${segmentFile.length()}")
+        logger.info(s"id: $id, column: ${column.name}, size: ${blockBufferOffsets.size}, segmentFile: ${segmentFile.length()}")
     }
 
     def write(xs: Array[String]) = {
@@ -112,13 +114,12 @@ class SegmentWriter[E <: ConfigEnv](id: Int, blockSize: Int, tableName: String, 
     def close() = {
         flush()
         SegmentMeta.store(new File(segmentMetaPath), SegmentMeta(blockBufferOffsets.toArray))
-        blockBuffer.clear
         segmentFile.close
     }
 }
 
 class Segment(id: Int, segmentData: ByteBuffer, meta: SegmentMeta) extends Iterable[Array[Byte]] with LazyLogging {
-    logger.debug(s"segmentMeta blockOffsets: ${meta.blockOffsets.toList}")
+    logger.debug(s"id: $id, remaining: ${segmentData.remaining()}, blockOffsets.size: ${meta.blockOffsets.size}, blockOffsets: ${meta.blockOffsets.toList}")
     def iterator = new BlockIterator
 
     class BlockIterator extends Iterator[Array[Byte]] {
@@ -126,10 +127,10 @@ class Segment(id: Int, segmentData: ByteBuffer, meta: SegmentMeta) extends Itera
         var position = 0
 
         def next: Array[Byte] = {
-            val startByte = position // todo: improve on naming of these variables
-            val endByte = position + 1
-            val bytes = new Array[Byte](meta.blockOffsets(endByte) - meta.blockOffsets(startByte))
-            logger.debug(s"startByte: $startByte, endByte: $endByte, allocated array size: ${bytes.size}")
+            val startByteIdx = position
+            val endByteIdx = position + 1
+            val bytes = new Array[Byte](meta.blockOffsets(endByteIdx) - meta.blockOffsets(startByteIdx))
+            logger.debug(s"id: $id, startByteIdx: $startByteIdx, endByteIdx: $endByteIdx, allocated array size: ${bytes.size}, remaining: ${segmentData.remaining()}")
             segmentData.get(bytes)
             position += 1
             bytes

@@ -4,15 +4,13 @@ package immutabledb
   * Created by marcin1 on 2/21/17.
   */
 
-object DType extends Enumeration {
-  type DType = Value
-  val INT, TINY_INT, STRING = Value
-}
-
+// object DType extends Enumeration {
+//   type DType = Value
+//   val INT, TINY_INT, STRING = Value
+// }
 
 trait DataType {
     type A
-    implicit def tag: reflect.ClassTag[A]
 
     val size: Int
     val nullRepr: A
@@ -30,7 +28,6 @@ trait NumericDataType extends DataType {
 
 case object IntType extends NumericDataType {
     type A = Int
-    def tag = reflect.classTag[Int]
 
     val numOps = implicitly[Numeric[Int]]
     val size = 4
@@ -38,13 +35,19 @@ case object IntType extends NumericDataType {
     val maxVal = Int.MaxValue
     val nullRepr: Int = Int.MinValue
     def stringToValue(s: String): Int = s.toInt
-    def valueToBytes(value: Int): Array[Byte] = List(8, 16, 24).foldLeft(Array[Byte]((value & 0xFF).toByte))((b, a) => b ++ Array[Byte](((value >> a) & 0xFF).toByte))
-    def bytesToValue(bytes: Array[Byte]): Int = bytes.reverse.foldLeft(0)((x, b) => (x << 8) + (b & 0xFF))
+    def valueToBytes(value: Int): Array[Byte] = {
+        val bytes = new Array[Byte](4)
+        bytes(3) = ((value >> 24) & 0xFF).toByte
+        bytes(2) = ((value >> 16) & 0xFF).toByte
+        bytes(1) = ((value >> 8) & 0xFF).toByte
+        bytes(0) = (value & 0xFF).toByte
+        bytes
+    }
+    def bytesToValue(bytes: Array[Byte]): Int = Conversions.bytesToInt(bytes)
 }
 
 case object TinyIntType extends NumericDataType {
     type A = Byte
-    def tag = reflect.classTag[Byte]
 
     val numOps = implicitly[Numeric[Byte]]
     val size = 1
@@ -58,7 +61,6 @@ case object TinyIntType extends NumericDataType {
 
 case class StringType(val size: Int) extends DataType {
     type A = String
-    def tag = reflect.classTag[String]
 
     val nullRepr: String = "\\N"
     def stringToValue(s: String): String = s

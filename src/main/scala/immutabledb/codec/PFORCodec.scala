@@ -6,8 +6,6 @@ import scala.collection.mutable.Buffer
 import immutabledb.{DataType, IntType}
 import me.lemire.integercompression.differential.IntegratedIntCompressor
 
-import scala.reflect.ClassTag
-
 /**
   * Created by marcin1 on 7/28/17.
   */

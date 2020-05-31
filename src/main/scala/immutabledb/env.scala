@@ -25,7 +25,7 @@ object DevEnv extends Env {
     val config = Config(
         dataDir =  "" / "Users" / "marcin" / "immutable3",
         blockSize = 1024,
-        segmentSize = 512,
+        segmentSize = 100,
         readBufferSize = 1024,
         resultQueueSize = 100
     )

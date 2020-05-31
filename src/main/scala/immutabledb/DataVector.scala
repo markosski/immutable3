@@ -1,25 +1,52 @@
 package immutabledb
 
-/**
-  * Created by marcin1 on 7/12/17.
-  * 
-  */
-import immutabledb._
 import immutabledb.storage._
 import immutabledb.codec._
 import scala.collection.mutable
 import java.io.ByteArrayInputStream
 import com.typesafe.scalalogging.LazyLogging
-import immutabledb.operator.SelectionOperator
 
-case class ColumnVectorBatch(
+object ColumnVectorBatch {
+  def getValue[T](vec: ColumnVectorBatch, colIdx: Int, vecIdx: Int): T = {
+    vec.columnVectors(colIdx).data(vecIdx).asInstanceOf[T]
+  }
+}
+
+trait ColumnVectorBatch {
+  val oid: Int
+  val size: Int
+  val columnVectors: Array[ColumnVector]
+  val columns: Array[Column]
+  val selected: mutable.BitSet
+  val selectedInUse: Boolean // if not matching records set to false
+}
+
+case class FilledColumnVectorBatch(
                              oid: Int,
                              size: Int,
                              columnVectors: Array[ColumnVector],
                              columns: Array[Column],
                              selected: mutable.BitSet,
                              selectedInUse: Boolean // if not matching records set to false
-                     )
+                     ) extends ColumnVectorBatch
+
+case object NullColumnVectorBatch extends ColumnVectorBatch {
+  val oid = 0
+  val size = 0
+  val columnVectors = Array[ColumnVector]()
+  val columns = Array[Column]()
+  val selected = mutable.BitSet()
+  val selectedInUse = false
+}
+
+case object FailedColumnVectorBatch extends ColumnVectorBatch {
+  val oid = 0
+  val size = 0
+  val columnVectors = Array[ColumnVector]()
+  val columns = Array[Column]()
+  val selected = mutable.BitSet()
+  val selectedInUse = false
+}
 
 trait ColumnVector {
     val data: Array[_]
@@ -28,8 +55,6 @@ trait ColumnVector {
 case class IntColumnVector(data: Array[Int]) extends ColumnVector
 case class TinyIntColumnVector(data: Array[Byte]) extends ColumnVector
 case class StringColumnVector(data: Array[String]) extends ColumnVector
-
-// object NullColVector extends ColumnVector
 
 /*
 DataVectorProducer should be created for single segment.
@@ -54,7 +79,7 @@ class DataVectorProducer0(sm: SegmentManager, tableName: String, cols: List[Colu
       .map(c => sm.getSegments(tableName, c.name).map(s => s.iterator))
     val segmentCount = segmentIters(0).size
 
-    def next = {
+    def next: FilledColumnVectorBatch = {
       vecCounter += 1
       val columnVectors = new Array[ColumnVector](cols.size)
 
@@ -85,7 +110,7 @@ class DataVectorProducer0(sm: SegmentManager, tableName: String, cols: List[Colu
       val bitSet = mutable.BitSet()
       for (x <- 0 until vecSize) { bitSet.add(x) } // set all bits
 
-      ColumnVectorBatch(
+      FilledColumnVectorBatch(
         vecCounter * table.blockSize, 
         vecSize, 
         columnVectors,

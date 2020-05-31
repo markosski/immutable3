@@ -12,6 +12,8 @@ import java.io.File
 import util.StringUtils._
 import com.typesafe.scalalogging.LazyLogging
 
+case class SegmentInfo(segment: ByteBuffer, segmentMeta: SegmentMeta)
+
 // - Need something that will have information about database strucute, e.g. find all tables in the system
 // - Retrieve list of segments for the table
 // todo: When loading segments validate there is the same segment cound for each column in the table
@@ -36,6 +38,7 @@ class SegmentManager(dataDir: String) extends LazyLogging {
     private[this] def getSegmentFiles(tableName: String, colName: String): List[File] = {
         new File(dataDir / tableName).listFiles().toList
             .filter(x => x.getName.startsWith(s"${colName}_") && x.getName.endsWith(".dat"))
+            .sortBy(f => f.getName)
     }
 
     // TODO: make sure segment are sorted in the list
@@ -56,8 +59,9 @@ class SegmentManager(dataDir: String) extends LazyLogging {
 
     // make sure metas are sorted in the list
     private[this] def getSegmentMetaFiles(tableName: String, colName: String): List[File] = {
-        (new File(dataDir / tableName).listFiles()).toList
+        new File(dataDir / tableName).listFiles().toList
             .filter(x => x.getName.startsWith(s"${colName}_") && x.getName.endsWith(".meta"))
+            .sortBy(f => f.getName)
     }
 
     private[this] def getSegmentMetaMap(tables: List[Table]): mutable.Map[String, List[SegmentMeta]] = {
@@ -66,8 +70,7 @@ class SegmentManager(dataDir: String) extends LazyLogging {
         tables.foreach { table =>
             table.columns.foreach { col => 
                 {
-                    val metas = getSegmentMetaFiles(table.name, col.name)
-                        .map(f => SegmentMeta.load(f))
+                    val metas = getSegmentMetaFiles(table.name, col.name).map(f => SegmentMeta.load(f))
                     segmentMetas += (s"${table.name}.${col.name}" -> metas)
                 }
             }

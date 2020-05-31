@@ -4,20 +4,25 @@ import immutabledb.codec._
 import immutabledb.storage._
 
 object Loader {
+    def run = {
+        main(Array("/Users/marcin/projects/immutable3/data_10m.csv", "data_10m"))
+    }
+
     def main(args: Array[String]) = {
         val csvFilePath = args(0)
+        val outDir = args(1)
 
         val bufferedSource = io.Source.fromFile(csvFilePath)
 
         val lines = bufferedSource.getLines()
         val first = lines.next().split(",").toList
 
-        val colId = new Column("id", CodecType.PFOR_INT)
-        val colState = new Column("state", CodecType.DENSE_STRING, Map("size" -> "2"))
-        val colAge = new Column("age", CodecType.DENSE_TINYINT)
+        val colId = Column.make("id", CodecType.DENSE_INT)
+        val colState = Column.make("state", CodecType.DENSE_STRING, Map("size" -> "2"))
+        val colAge = Column.make("age", CodecType.DENSE_TINYINT)
 
         val table = Table(
-            "test1", 
+            outDir,
             List(colId, colState, colAge),
             DevEnv.config.blockSize)
 

@@ -20,6 +20,5 @@ trait Codec[T] {
 
 object CodecType extends Enumeration {
   type Codec = Value
-  val DENSE_INT, DENSE_TINYINT, DENSE_STRING = Value
-  val PFOR_INT = Value
+  val PFOR_INT, DENSE_INT, DENSE_TINYINT, DENSE_STRING = Value
 }

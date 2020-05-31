@@ -13,10 +13,12 @@ object ScanOp {
     }
 }
 
-class ScanOp(sm: SegmentManager, segIdx: Int, tableName: String, cols: List[Column]) extends SelectionOperator {
+class ScanOp(sm: SegmentManager, segIdx: Int, tableName: String, cols: List[Column]) extends ColumnVectorOperator {
   def iterator = new DataVectorIterator()
 
-  class DataVectorIterator extends Iterator[ColumnVectorBatch] {
+  override def toString = s"segIdx = $segIdx, tableName = $tableName, cols = $cols"
+
+  class DataVectorIterator extends Iterator[FilledColumnVectorBatch] {
     var vecCounter = 0
     val table = sm.tables.filter(t => t.name == tableName).head
     val segmentIters: Vector[Segment#BlockIterator] = cols
@@ -47,11 +49,13 @@ class ScanOp(sm: SegmentManager, segIdx: Int, tableName: String, cols: List[Colu
         }
       }
 
+      logger.debug(s"Finished scans for $cols")
+
       val vecSize = columnVectors(0).data.size // based on first column
       val bitSet = mutable.BitSet()
       for (x <- 0 until vecSize) { bitSet.add(x) } // set all bits
 
-      val vec = ColumnVectorBatch(
+      val vec = FilledColumnVectorBatch(
         vecCounter * table.blockSize, 
         vecSize, 
         columnVectors,
@@ -59,6 +63,7 @@ class ScanOp(sm: SegmentManager, segIdx: Int, tableName: String, cols: List[Colu
         bitSet,
         true
       )
+      logger.debug(s"New vector created: $vec")
       vecCounter += 1
       vec
     }
