@@ -156,7 +156,7 @@ class Engine(sm: SegmentManager, es: ExecutorService) extends LazyLogging {
     }
 
     def execute(query: Query): Either[Throwable, Iterator[Row]] = {
-        val resultQueue = new LinkedBlockingQueue[ColumnVectorBatch](1000)
+        val resultQueue = new LinkedBlockingQueue[ColumnVectorBatch](100)
         val table: Table = sm.getTable(query.table)
         val segmentCount: Int = sm.getTableSegmentCount(table.name)
         val selectOps: PTree = resolveSelectOps(query)
@@ -177,17 +177,6 @@ class Engine(sm: SegmentManager, es: ExecutorService) extends LazyLogging {
                 new PipelineThread(pipeline, i, resultQueue).run()
             }
         }
-
-//        for {
-//            done <- Future.sequence(threads)
-//            resultToOp = new ResultQueueOp(resultQueue)
-//            result <- Future(
-//                Try(pipeline.projectOp(resultToOp).iterator) match {
-//                    case Success(op) => Right(op)
-//                    case Failure(err) => Left(err)
-//                }
-//            )
-//        } yield result
 
         threads.foreach( f => {
             f.onComplete( {
@@ -229,7 +218,6 @@ class PipelineThread(pipeline: Pipeline, segIdx: Int, resultQueue: BlockingQueue
 
             vec match {
                 case Success(v) if v.selectedInUse => {
-//                    logger.info(s"resultQueue size: ${resultQueue.size}")
                     resultQueue.put(v)
                 }
                 case Failure(err) => throw err

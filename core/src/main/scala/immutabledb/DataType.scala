@@ -1,5 +1,7 @@
 package immutabledb
 
+import immutabledb.util._
+
 /**
   * Created by marcin1 on 2/21/17.
   */

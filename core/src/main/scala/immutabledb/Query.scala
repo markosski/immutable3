@@ -9,8 +9,8 @@ case class LT(lt: Double) extends SelectCondition
 case object NoOp extends SelectCondition
 
 trait SelectADT
-case class And(op1: Select, op2: Select) extends SelectADT
-case class Or(op1: Select, op2: Select) extends SelectADT
+case class And(op1: SelectADT, op2: SelectADT) extends SelectADT
+case class Or(op1: SelectADT, op2: SelectADT) extends SelectADT
 case class Select(col: String, cond: SelectCondition) extends SelectADT
 case object NoSelect extends SelectADT
 
@@ -28,6 +28,7 @@ case class Count(col: String, alias: Option[String] = None) extends Aggregate
 trait ProjectADT
 case class Project(cols: List[String], limit: Int = 0) extends ProjectADT
 case class ProjectAgg(aggs: List[Aggregate], groupBy: List[String] = Nil) extends ProjectADT
+case object NoProject extends ProjectADT
 
 /*
 And(

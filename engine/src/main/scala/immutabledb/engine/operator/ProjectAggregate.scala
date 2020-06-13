@@ -5,36 +5,36 @@ import immutabledb._
 import scala.collection.mutable
 import scala.collection.mutable.{Buffer, HashMap}
 
-trait Aggregator[T] extends Product {
+trait Aggregator[T, R] extends Product {
     val col: String
     val alias: String
     def add(v: T)
-    def get: Double
-    def make: Aggregator[T]
+    def get: R
+    def make: Aggregator[T, R]
 }
 
-case class CountAggr(col: String, alias: String) extends Aggregator[Any] {
+case class CountAggr(col: String, alias: String) extends Aggregator[Any, Long] {
     private var counter = 0L
     def add(v: Any) = counter += 1
-    def get = counter
+    def get: Long = counter
     def make = CountAggr(col, alias)
 }
 
-case class MaxDoubleAggr(col: String, alias: String) extends Aggregator[Double] {
+case class MaxDoubleAggr(col: String, alias: String) extends Aggregator[Double, Double] {
     private var max = Double.MinValue
     def add(v: Double) = if (v > max) max = v
     def get: Double = max
     def make = MaxDoubleAggr(col, alias)
 }
 
-case class MinDoubleAggr(col: String, alias: String) extends Aggregator[Double] {
+case class MinDoubleAggr(col: String, alias: String) extends Aggregator[Double, Double] {
     private var min = Double.MaxValue
     def add(v: Double) = if (v < min) min = v
     def get: Double = min
     def make = MinDoubleAggr(col, alias)
 }
 
-case class AvgDoubleAggr(col: String, alias: String) extends Aggregator[Double] {
+case class AvgDoubleAggr(col: String, alias: String) extends Aggregator[Double, Double] {
     private var avg = Buffer[Double]()
     def add(v: Double) = avg += v
     def get: Double = avg.sum / avg.size
@@ -42,12 +42,12 @@ case class AvgDoubleAggr(col: String, alias: String) extends Aggregator[Double] 
 }
 
 object ProjectAggOp {
-    def make(aggs: List[Aggregator[_]], groupBy: List[String]) = {
+    def make(aggs: List[Aggregator[_, _]], groupBy: List[String]) = {
         (op: ColumnVectorOperator) => new ProjectAggOp(aggs, op, groupBy)
     }
 }
 
-class ProjectAggOp(aggs: List[Aggregator[_]], op: ColumnVectorOperator, groupBy: List[String]) extends ProjectionOperator {
+class ProjectAggOp(aggs: List[Aggregator[_, _]], op: ColumnVectorOperator, groupBy: List[String]) extends ProjectionOperator {
     override def toString = s"aggs = $aggs, op = $op, groupBy = $groupBy"
 
     def iterator = new ProjectAggIterator
@@ -56,8 +56,8 @@ class ProjectAggOp(aggs: List[Aggregator[_]], op: ColumnVectorOperator, groupBy:
         private val opIter = op.iterator
         private val cols: List[String] = aggs.map(_.col)
         private val aliases: Map[String, String] = aggs.map(x => (x.alias, x.col)).toMap
-        private val resultMap = mutable.LinkedHashMap[String, HashMap[String, Aggregator[_]]]()
-        private val aggsMap: HashMap[String, Aggregator[_]] = HashMap.apply(aggs.map(x => (x.alias, x)):_*)
+        private val resultMap = mutable.LinkedHashMap[String, HashMap[String, Aggregator[_, _]]]()
+        private val aggsMap: HashMap[String, Aggregator[_, _]] = HashMap.apply(aggs.map(x => (x.alias, x)):_*)
         private var currVecBatch: ColumnVectorBatch = null
 
         // Need to find cols in proper order
@@ -80,8 +80,8 @@ class ProjectAggOp(aggs: List[Aggregator[_]], op: ColumnVectorOperator, groupBy:
 
         private def getResultMapKey(xs: List[Any]) = xs.mkString("_")
 
-        private def getNewAggs(aggs: HashMap[String, Aggregator[_]]): HashMap[String, Aggregator[_]] = {
-            val newAggs = HashMap[String, Aggregator[_]]()
+        private def getNewAggs(aggs: HashMap[String, Aggregator[_, _]]): HashMap[String, Aggregator[_, _]] = {
+            val newAggs = HashMap[String, Aggregator[_, _]]()
             aggs.foreach( keyVal => newAggs.put(keyVal._1, keyVal._2.make) )
             newAggs
         }

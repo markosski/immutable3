@@ -1,4 +1,4 @@
-package util
+package immutabledb.util
 
 /**
   * Created by marcin1 on 3/20/17.

@@ -1,5 +1,6 @@
-package immutabledb
+package immutabledb.engine
 
+import immutabledb._
 import immutabledb.storage.SegmentManager
 import immutabledb.operator._
 import scala.collection.mutable.MutableList

@@ -23,12 +23,12 @@ class SegmentManager(dataDir: String) extends LazyLogging {
     val segmentsMeta: mutable.Map[String, List[SegmentMeta]] = getSegmentMetaMap(tables)
 
     logger.info(s"Discovered tables: $tables")
-    logger.info(s"Loaded segments: $segments")
 
     private[this] def getTables(): List[Table] = {
         // scan directories that contains table.meta
         val dataDirFile = new File(dataDir)
         val dirs = dataDirFile.listFiles().filter(_.isDirectory()).toList
+        logger.info(s"$dirs")
         dirs.map { parent =>
             TableIO.load(dataDir, parent.getName)
         }

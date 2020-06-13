@@ -1,4 +1,4 @@
-package immutabledb
+package immutabledb.util
 
 object Conversions {
     def bytesToLong(bytes: Array[Byte]): Long = {
