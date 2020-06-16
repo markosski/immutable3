@@ -8,8 +8,9 @@ import java.io.ByteArrayInputStream
 import com.typesafe.scalalogging.LazyLogging
 
 object ScanOp {
-    def mkScanOp(sm: SegmentManager, tableName: String) = {
-        (cols: List[Column], segIdx: Int) => new ScanOp(sm, segIdx, tableName, cols)
+    def mkScanOp(sm: SegmentManager, tableName: String) = new Function2[List[Column], Int, ScanOp] {
+        override def toString = s"sm = $sm, tableName = $tableName"
+        def apply(cols: List[Column], segIdx: Int) = new ScanOp(sm, segIdx, tableName, cols)
     }
 }
 

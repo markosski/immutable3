@@ -16,6 +16,7 @@ object SqlCliParser {
     case class Config(
         query: String = "", 
         dataPath: List[File] = Nil,
+        cpuCount: Int = Runtime.getRuntime().availableProcessors() 
         )
 
     val builder = OParser.builder[Config]
@@ -33,7 +34,11 @@ object SqlCliParser {
                 .required()
                 .valueName("<dir>")
                 .action((v, c) => c.copy(dataPath = v :: Nil))
-                .text("path to data directory")
+                .text("path to data directory"),
+            opt[Int]("cpu-count")
+                .valueName("<num>")
+                .action((v, c) => c.copy(cpuCount = v))
+                .text("number of threads to use")
         )
     }
 
@@ -55,9 +60,7 @@ object SqlCli extends LazyLogging {
         val query: Query = SQLParser.parseAll(config.query)
         logger.info(s"Query: $query")
 
-        // implicit val ec: scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.global
-
-        val cpus = Runtime.getRuntime().availableProcessors()
+        val cpus = config.cpuCount
         val th = java.util.concurrent.Executors.newFixedThreadPool(cpus)
         val sm = new SegmentManager(config.dataPath.head.getAbsolutePath())
         val table = sm.getTable(query.table)

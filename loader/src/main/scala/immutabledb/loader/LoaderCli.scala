@@ -15,7 +15,7 @@ import scopt.OParser
 
 object LoaderCliParser {
     case class ArgCol(name: String, codec: String, options: Map[String, String])
-    case class Config(
+    case class ConfigCli(
         cols: Vector[ArgCol] = Vector.empty, 
         table: String = "", 
         dataPath: List[File] = Nil, 
@@ -24,7 +24,7 @@ object LoaderCliParser {
         segSize: Int = DevEnv.config.segmentSize
         )
 
-    val builder = OParser.builder[Config]
+    val builder = OParser.builder[ConfigCli]
     val parser = {
         import builder._
         OParser.sequence(
@@ -58,7 +58,7 @@ object LoaderCliParser {
                 .text("number of records per block"),
             opt[Int]("segment-size")
                 .valueName("<int>")
-                .action((v, c) => c.copy(blockSize = v))
+                .action((v, c) => c.copy(segSize = v))
                 .text("number of blocks per segment")
         )
     }
@@ -79,8 +79,8 @@ object LoaderCliParser {
         ArgCol(parts(0), parts(1), options)
     }
 
-    def parse(args: List[String]): Option[Config] = {
-        OParser.parse(parser, args, Config())
+    def parse(args: List[String]): Option[ConfigCli] = {
+        OParser.parse(parser, args, ConfigCli())
     }
 }
 
@@ -94,6 +94,18 @@ object LoaderCli extends LazyLogging {
         }(identity)
         
         logger.info(s"CLI Config: $config")
+
+        val envConfig = Config(
+            dataDir = config.dataPath.head.getPath(),
+            blockSize = config.blockSize,
+            segmentSize = config.segSize,
+            readBufferSize = 1024,
+            resultQueueSize = 100
+        )
+
+        val env = new Env {
+            val config = envConfig
+        }
 
         val csvFilePath = config.inputPath.head
         val outDir = config.dataPath.head
@@ -113,11 +125,12 @@ object LoaderCli extends LazyLogging {
         val table = Table(
             config.table,
             cols,
-            DevEnv.config.blockSize)
+            env.config.blockSize)
 
-        TableIO.store(DevEnv.config.dataDir, table)
+        TableIO.clear(config.dataPath.head.getPath(), table)
+        TableIO.store(config.dataPath.head.getPath(), table)
 
-        val segs: HashMap[String, SegmentWriter[_]] = HashMap(cols.map { col => (col.name -> new SegmentWriter(0, table.blockSize, table.name, col)(DevEnv)) }:_*)
+        val segs: HashMap[String, SegmentWriter[_]] = HashMap(cols.map { col => (col.name -> new SegmentWriter(0, table.blockSize, table.name, col)(env)) }:_*)
 
         for (line <- lines) {
             val vals = line.split(",").map(_.trim)

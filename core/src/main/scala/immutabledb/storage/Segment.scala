@@ -67,59 +67,84 @@ class SegmentWriter[E <: ConfigEnv](id: Int, blockSize: Int, tableName: String, 
     private val segmentPath = env.config.dataDir / tableName / s"${column.name}_$id.dat"
     private val segmentMetaPath = env.config.dataDir / tableName / s"${column.name}_$id.meta"
     private val segmentFile: RandomAccessFile = new RandomAccessFile(segmentPath, "rw")
+    segmentFile.setLength(0) // delete contents
 
-    // TODO: buffer should be dynamic as some codecs will not have even byte size like dense codecs
-    private var blockBuffer: ByteBuffer = ByteBuffer.allocate(blockSize * codec.dtype.size)
+    // TODO: buffer should be sufficient to store compressed data
+    private var blockBuffer: ByteBuffer = ByteBuffer.allocateDirect(blockSize * codec.dtype.size)
+    private var recordsWritten = 0
+
+    logger.info(s"id: $id, blockSize: $blockSize, tableName: $tableName, column: $column, blockBuffer allocation: ${blockBuffer.remaining()}")
+    logger.info(s"segment env: ${env.config}")
 
     /**
       * Block offsets are stored as continous sequence.
       * For example idx 0 and 1 are starting byte and ending byte of 1st byte block, idx 2 and 3 - 2nd block etc.
       */
     val blockBufferOffsets: Buffer[Int] = Buffer[Int]()
-    blockBufferOffsets += 0 // first block 0 at byte offset 0
-    logger.info(s"column: ${column.name}, size: ${blockBufferOffsets.size}, segmentFile: ${segmentFile.length()}")
+    blockBufferOffsets += 0 // first block 0 at byte offset 0, if N segments were written out, the blockBufferOffsets.size will be N+1
+    logger.info(s"column: ${column.name}, blockBufferOffsets.size: ${blockBufferOffsets.size}, segmentFile: ${segmentFile.length()}")
 
     def newSegment() = {
         new SegmentWriter(id + 1, blockSize, tableName, column)(env)
     }
 
     def write(x: String): Unit = {
-        if (blockBufferOffsets.size + 1 > env.config.segmentSize) throw new Exception("Segment full")
+        if (blockBufferOffsets.size > env.config.segmentSize) 
+            throw new Exception("Segment full")
 
-        if (blockBuffer.hasRemaining) {
+        if (recordsWritten < blockSize) {
             blockBuffer.put(codec.dtype.valueToBytes(codec.dtype.stringToValue(x)))
+            recordsWritten += 1
         } else {
             flush()
+            println(x)
             blockBuffer.put(codec.dtype.valueToBytes(codec.dtype.stringToValue(x)))
+            recordsWritten += 1
         }
     }
 
     def flush(): Unit = {
-        val encoded = codec.encode(blockBuffer.array).toByteArray
-        blockBuffer.clear()
+        val position = blockBuffer.position()
+        val bytes = new Array[Byte](position)
+        logger.info(s"before, byteArray: ${bytes.size}, capacity: ${blockBuffer.capacity()}, position: ${position}")
+        blockBuffer.position(0)
+        blockBuffer.get(bytes, 0, position)
+        val encoded = codec.encode(bytes).toByteArray
         segmentFile.write(encoded)
 
         blockBufferOffsets += blockBufferOffsets(blockBufferOffsets.size - 1) + encoded.size
-        logger.info(s"id: $id, column: ${column.name}, size: ${blockBufferOffsets.size}, segmentFile: ${segmentFile.length()}")
+        logger.info(s"Flushed segment, idx: $id, column: ${column.name}, recordsWritten: $recordsWritten, blockBufferOffsets.size: ${blockBufferOffsets.size}, segmentFile: ${segmentFile.length()}")
+
+        blockBuffer.clear()
+        recordsWritten = 0
     }
 
-    def write(xs: Array[String]) = {
-        val encoded = codec.encode(xs).toByteArray()
-        segmentFile.write(encoded)
-        blockBufferOffsets(blockBufferOffsets.length) = encoded.size
-    }
+    // def write(xs: Array[String]) = {
+    //     val encoded = codec.encode(xs).toByteArray()
+    //     blockBuffer.clear()
+    //     segmentFile.write(encoded)
 
-    def remaining: Int = env.config.segmentSize - blockBufferOffsets.size
+    //     blockBufferOffsets += blockBufferOffsets(blockBufferOffsets.size - 1) + encoded.size
+    //     logger.info(s"Flushed segment, idx: $id, column: ${column.name}, blockBufferOffsets.size: ${blockBufferOffsets.size}, segmentFile: ${segmentFile.length()}")
+    // }
+
+    def remaining: Int = {
+        val rem = env.config.segmentSize - (blockBufferOffsets.size - 1)
+        rem
+    }
 
     def close() = {
-        flush()
+        val dataPosition = blockBuffer.position()
+        logger.info(s"closing, recordsWritten: ${recordsWritten}, position: ${dataPosition}")
+
+        if (dataPosition > 0) flush()
         SegmentMeta.store(new File(segmentMetaPath), SegmentMeta(blockBufferOffsets.toArray))
         segmentFile.close
     }
 }
 
 class Segment(id: Int, segmentData: ByteBuffer, meta: SegmentMeta) extends Iterable[Array[Byte]] with LazyLogging {
-    logger.debug(s"id: $id, remaining: ${segmentData.remaining()}, blockOffsets.size: ${meta.blockOffsets.size}, blockOffsets: ${meta.blockOffsets.toList}")
+    logger.debug(s"idx: $id, remaining: ${segmentData.remaining()}, blockOffsets.size: ${meta.blockOffsets.size}, blockOffsets: ${meta.blockOffsets.toList}")
     def iterator = new BlockIterator
 
     class BlockIterator extends Iterator[Array[Byte]] {
@@ -130,7 +155,7 @@ class Segment(id: Int, segmentData: ByteBuffer, meta: SegmentMeta) extends Itera
             val startByteIdx = position
             val endByteIdx = position + 1
             val bytes = new Array[Byte](meta.blockOffsets(endByteIdx) - meta.blockOffsets(startByteIdx))
-            logger.debug(s"id: $id, startByteIdx: $startByteIdx, endByteIdx: $endByteIdx, allocated array size: ${bytes.size}, remaining: ${segmentData.remaining()}")
+            logger.debug(s"idx: $id, startByteIdx: $startByteIdx, endByteIdx: $endByteIdx, allocated array size: ${bytes.size}, remaining: ${segmentData.remaining()}")
             segmentData.get(bytes)
             position += 1
             bytes

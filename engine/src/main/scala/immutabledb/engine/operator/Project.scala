@@ -6,8 +6,12 @@ import scala.collection.mutable.Queue
 import scala.annotation.tailrec
 
 object ProjectOp {
-    def mkProjectOp(cols: List[String], limit: Int = 0) = 
-        (op: ColumnVectorOperator) => new ProjectOp(cols, op, limit)
+    def mkProjectOp(cols: List[String], limit: Int = 0) = new Function1[ColumnVectorOperator, ProjectOp] {
+        override def toString = s"cols = $cols, limit = $limit"
+        def apply(op: ColumnVectorOperator) = {
+            new ProjectOp(cols, op, limit)
+        }
+    }
 }
 
 class ProjectOp(cols: List[String], op: ColumnVectorOperator, limit: Int = 0) extends ProjectionOperator {

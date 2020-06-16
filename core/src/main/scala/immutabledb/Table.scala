@@ -43,4 +43,11 @@ object TableIO {
         objectOut.close
         fileOut.close
     }
+
+    def clear(dataDir: String, table: Table): Unit = {
+        val path: File = new File(dataDir / table.name)
+        for (f <- Option(path.listFiles()).fold(Array[File]())(identity)) {
+          if (f.isFile()) f.delete()
+        }
+    }
 }

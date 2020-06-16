@@ -42,9 +42,12 @@ case class AvgDoubleAggr(col: String, alias: String) extends Aggregator[Double, 
 }
 
 object ProjectAggOp {
-    def make(aggs: List[Aggregator[_, _]], groupBy: List[String]) = {
-        (op: ColumnVectorOperator) => new ProjectAggOp(aggs, op, groupBy)
-    }
+    def make(aggs: List[Aggregator[_, _]], groupBy: List[String]) = new Function1[ColumnVectorOperator, ProjectAggOp] {
+        override def toString = s"aggs = $aggs, groupBy = $groupBy"
+        def apply(op: ColumnVectorOperator) = {
+            new ProjectAggOp(aggs, op, groupBy)
+        }
+    } 
 }
 
 class ProjectAggOp(aggs: List[Aggregator[_, _]], op: ColumnVectorOperator, groupBy: List[String]) extends ProjectionOperator {

@@ -3,8 +3,12 @@ package immutabledb.operator
 import immutabledb._
 
 object SelectOp {
-    def mkSelectOp(col: String, cond: SelectCondition) = (op: ColumnVectorOperator) => new SelectOp(col, cond, op)
-    def foo(select: SelectADT) = ???
+    def mkSelectOp(col: String, cond: SelectCondition) = new Function1[ColumnVectorOperator, SelectOp] {
+        override def toString = s"col = $col, cond = $cond"
+        def apply(op: ColumnVectorOperator) = {
+            new SelectOp(col, cond, op)
+        }
+    }
 }
 
 class SelectOp(col: String, cond: SelectCondition, op: ColumnVectorOperator) extends ColumnVectorOperator {
