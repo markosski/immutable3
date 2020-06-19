@@ -6,6 +6,8 @@ import immutabledb._
 import immutabledb.codec._
 import immutabledb.operator._
 import immutabledb.storage._
+import immutabledb.engine.operator.{ProjectAggregateQueueOp}
+import immutabledb.operator.OperatorAliasses._
 
 import scala.collection.mutable.Queue
 import scala.concurrent.Future
@@ -14,6 +16,8 @@ import com.typesafe.scalalogging.LazyLogging
 
 import scala.collection.mutable.HashMap
 import scala.util.{Failure, Success, Try}
+
+import scala.reflect.runtime.universe.{TypeTag, typeOf}
 
 // - execute selection operator accumulating vectors in _result_queue_
 // - execute projection operator from _result_queue_
@@ -123,84 +127,118 @@ class Engine(sm: SegmentManager, es: ExecutorService) extends LazyLogging {
         rec(query.select)
     }
 
-    def resolveProjectOp(query: Query, table: Table): ColumnVectorOperator => ProjectionOperator = {
-        query.project match {
-            case p: Project => ProjectOp.mkProjectOp(p.cols, p.limit)
-            case p: ProjectAgg => {
-                val opAggs = p.aggs.map { 
-                    _ match {
-                        case Max(col, alias) => {
-                            val column = table.getColumn(col)
-                            column.columnType match {
-                                case ColumnType.INT | ColumnType.TINYINT => MaxDoubleAggr(col, alias.getOrElse(col + "_max"))
-                                case _ => throw new Exception("Unsupported agg for this data type")
-                            }
-                        }
-                        case Min(col, alias) => {
-                            val column = table.getColumn(col)
-                            column.columnType match {
-                                case ColumnType.INT | ColumnType.TINYINT => MinDoubleAggr(col, alias.getOrElse(col + "_min"))
-                                case _ => throw new Exception("Unsupported agg for this data type")
-                            }
-                        }
-                        case Count(col, alias) => {
-                            CountAggr(col, alias.getOrElse(col + "_count"))
-                        }
-                        case _ => throw new Exception("Unknown Aggregate type")
+    def resolveProjectOp(projectAgg: ProjectAgg, table: Table): ColumnVectorOperator => Operator[AggMapTuple] = {
+        val aggs = projectAgg.aggs.map { 
+            _ match {
+                case Max(col, alias) => {
+                    val column = table.getColumn(col)
+                    column.columnType match {
+                        case ColumnType.INT | ColumnType.TINYINT => MaxDoubleAggr(col, alias.getOrElse(col + "_max"))
+                        case ColumnType.STRING => MaxStringAggr(col, alias.getOrElse(col + "_max"))
+                        case _ => throw new Exception("Unsupported agg for this data type")
                     }
                 }
-
-                ProjectAggOp.make(opAggs, p.groupBy)
+                case Min(col, alias) => {
+                    val column = table.getColumn(col)
+                    column.columnType match {
+                        case ColumnType.INT | ColumnType.TINYINT => MinDoubleAggr(col, alias.getOrElse(col + "_min"))
+                        case ColumnType.STRING => MaxStringAggr(col, alias.getOrElse(col + "_min"))
+                        case _ => throw new Exception("Unsupported agg for this data type")
+                    }
+                }
+                case Count(col, alias) => {
+                    CountAggr(col, alias.getOrElse(col + "_count"))
+                }
+                case _ => throw new Exception("Unknown Aggregate type")
             }
         }
+        ProjectAggOp.make(aggs, projectAgg.groupBy)
     }
 
     def execute(query: Query): Either[Throwable, Iterator[Row]] = {
-        val resultQueue = new LinkedBlockingQueue[ColumnVectorBatch](100)
+        // val resultQueue = new LinkedBlockingQueue[ColumnVectorBatch](100)
         val table: Table = sm.getTable(query.table)
         val segmentCount: Int = sm.getTableSegmentCount(table.name)
         val selectOps: PTree = resolveSelectOps(query)
-        val projectOp = resolveProjectOp(query, table)
 
-        val pipeline = Pipeline(
-            table,
-            getColumns(query, table),
-            ScanOp.mkScanOp(sm, query.table),
-            selectOps,
-            projectOp
-        )
+        query.project match {
+            case Project(cols, limit) => {
+                val resultQueue = new LinkedBlockingQueue[Option[ColumnVectorBatch]](100)
+                val pipeline = Pipeline(
+                    table,
+                    getColumns(query, table),
+                    ScanOp.mkScanOp(sm, query.table),
+                    selectOps,
+                    ProjectOp.mkProjectOp(cols, limit)
+                )
+                logger.info(s"Execution Pipeline: $pipeline")
+                
+                val threads = (0 until segmentCount).toList.map { i =>
+                    Future {
+                        new PipelineThread(pipeline, i, resultQueue).run()
+                    }
+                }
 
-        logger.info(s"Execution Pipeline: $pipeline")
+                threads.foreach( f => {
+                    f.onComplete( {
+                        case Success(s) => s
+                        case Failure(err) => throw err
+                    })
+                    }
+                )
 
-        val threads = (0 until segmentCount).toList.map { i =>
-            Future {
-                new PipelineThread(pipeline, i, resultQueue).run()
+                val resultToOp = new ResultQueueOp(resultQueue, threads.size)
+                val projectIter = pipeline.projectOp(resultToOp)
+
+                Try(projectIter.iterator) match {
+                    case Success(op) => Right(op)
+                    case Failure(err) => Left(err)
+                }
+
             }
-        }
+            case p: ProjectAgg => {
+                val resultQueue = new LinkedBlockingQueue[Option[AggMapTuple]](100)
+                val pipeline = Pipeline(
+                    table,
+                    getColumns(query, table),
+                    ScanOp.mkScanOp(sm, query.table),
+                    selectOps,
+                    resolveProjectOp(p, table)
+                )
+                logger.info(s"Execution Pipeline: $pipeline")
 
-        threads.foreach( f => {
-            f.onComplete( {
-                case Success(s) => s
-                case Failure(err) => throw err
-            })
+                val threads = (0 until segmentCount).toList.map { i =>
+                    Future {
+                        new PipelineAggregateThread(pipeline, i, resultQueue).run()
+                    }
+                }
+
+                threads.foreach( f => {
+                    f.onComplete( {
+                        case Success(s) => s
+                        case Failure(err) => throw err
+                    })
+                    }
+                )
+
+                val resultToOp = new ProjectAggregateQueueOp(resultQueue, threads.size)
+
+                Try(resultToOp.iterator) match {
+                    case Success(op) => Right(op)
+                    case Failure(err) => Left(err)
+                }
             }
-        )
-
-        val resultToOp = new ResultQueueOp(resultQueue, threads.size)
-
-        Try(pipeline.projectOp(resultToOp).iterator) match {
-            case Success(op) => Right(op)
-            case Failure(err) => Left(err)
         }
     }
 }
 
-class PipelineThread(pipeline: Pipeline, segIdx: Int, resultQueue: BlockingQueue[ColumnVectorBatch]) extends Runnable with LazyLogging {
-    def runOps(op: ColumnVectorOperator, selectPipeline: PTree): ColumnVectorOperator = {
+class PipelineThread(pipeline: Pipeline[_], segIdx: Int, resultQueue: BlockingQueue[Option[ColumnVectorBatch]]) extends Runnable with LazyLogging {
+    // TODO: use AND/OR operators
+    def runOps(op: ColumnVectorOperator, selectPipeline: PTree): Operator[ColumnVectorBatch] = {
         def rec(tree: PTree): ColumnVectorOperator => ColumnVectorOperator = {
             tree match {
-                case PNode(n1, n2, _) => (op: ColumnVectorOperator) => rec(n1)(rec(n2)(op))
-                case PLeaf(op) => op
+                case PNode(n1, n2, _) => (x: ColumnVectorOperator) => rec(n2)(rec(n1)(x))
+                case PLeaf(op0) => op0
             }
         }
         rec(selectPipeline)(op)
@@ -210,21 +248,46 @@ class PipelineThread(pipeline: Pipeline, segIdx: Int, resultQueue: BlockingQueue
         logger.debug(s"Started running pipeline for segment: $segIdx\n")
 
         val scanOp = pipeline.scanOp(pipeline.usedColumns, segIdx)
+        val mainOpIter = runOps(scanOp, pipeline.selectOps).iterator
 
-        val selOpIter = runOps(scanOp, pipeline.selectOps).iterator
-
-        while (selOpIter.hasNext) {
-            val vec = Try(selOpIter.next)
-
-            vec match {
-                case Success(v) if v.selectedInUse => {
-                    resultQueue.put(v)
-                }
+        while (mainOpIter.hasNext) {
+            Try(mainOpIter.next) match {
+                case Success(v) => resultQueue.put(Some(v))
                 case Failure(err) => throw err
             }
         }
 
-        resultQueue.put(NullColumnVectorBatch)
+        resultQueue.put(None) // to represent end of elements
+        logger.debug(s"Finished running pipeline for segment: $segIdx\n")
+    }
+}
+
+class PipelineAggregateThread(pipeline: Pipeline[AggMapTuple], segIdx: Int, resultQueue: BlockingQueue[Option[AggMapTuple]]) extends Runnable with LazyLogging {
+    // TODO: use AND/OR operators
+    def runOps(op: ColumnVectorOperator, selectPipeline: PTree, projector: ColumnVectorOperator => Operator[AggMapTuple]): Operator[AggMapTuple] = {
+        def rec(tree: PTree): ColumnVectorOperator => ColumnVectorOperator = {
+            tree match {
+                case PNode(n1, n2, _) => (x: ColumnVectorOperator) => rec(n2)(rec(n1)(x))
+                case PLeaf(op0) => op0
+            }
+        }
+        projector(rec(selectPipeline)(op))
+    }
+
+    def run(): Unit = {
+        logger.debug(s"Started running pipeline for segment: $segIdx\n")
+
+        val scanOp = pipeline.scanOp(pipeline.usedColumns, segIdx)
+        val mainOpIter = runOps(scanOp, pipeline.selectOps, pipeline.projectOp).iterator
+
+        while (mainOpIter.hasNext) {
+            Try(mainOpIter.next) match {
+                case Success(v) => resultQueue.put(Some(v))
+                case Failure(err) => throw err
+            }
+        }
+
+        resultQueue.put(None) // to represent end of elements
         logger.debug(s"Finished running pipeline for segment: $segIdx\n")
     }
 }

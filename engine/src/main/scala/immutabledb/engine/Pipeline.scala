@@ -24,12 +24,12 @@ trait PTree
 case class PLeaf[T <: ColumnVectorOperator](op: T => T) extends PTree
 case class PNode(n1: PTree, n2: PTree, op: PipelineOp.Value) extends PTree
 
-case class Pipeline(
+case class Pipeline[R](
                        table: Table,
                        usedColumns: List[Column],
                        scanOp: (List[Column], Int) => ColumnVectorOperator,
                        selectOps: PTree,
-                       projectOp: ColumnVectorOperator => ProjectionOperator
+                       projectOp: ColumnVectorOperator => Operator[R]
 ) {
     override def toString = {
         s"""

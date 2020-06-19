@@ -4,25 +4,30 @@ import java.util.concurrent.{BlockingQueue, ConcurrentLinkedQueue}
 
 import immutabledb._
 
-class ResultQueueOp(resultQueue: BlockingQueue[ColumnVectorBatch], nullCount: Int) extends ColumnVectorOperator {
-    logger.info(s"Current result queue vector count: ${resultQueue.size}")
-
+class ResultQueueOp(resultQueue: BlockingQueue[Option[ColumnVectorBatch]], nullCount: Int) extends ColumnVectorOperator {
     def iterator = new ResultQueueIterator()
 
     class ResultQueueIterator extends Iterator[ColumnVectorBatch] {
         private var finishedCount = 0
-        private var cached: ColumnVectorBatch = null
+        private var cached: Option[ColumnVectorBatch] = None
         private var countFailed = 0
 
         def next: ColumnVectorBatch = {
             logger.debug(s"giveNext")
-            if (cached != null) {
-                val vec = cached
-                cached = null
-                vec
-            } else {
-                resultQueue.take()
+            cached match {
+                case Some(c) => {
+                    cached = None
+                    c
+                }
+                case None => resultQueue.take().get
             }
+            // if (cached != null) {
+            //     val vec = cached
+            //     cached = null
+            //     vec
+            // } else {
+            //     resultQueue.take()
+            // }
         }
 
         def hasNext: Boolean = {
@@ -31,22 +36,22 @@ class ResultQueueOp(resultQueue: BlockingQueue[ColumnVectorBatch], nullCount: In
             } else if (finishedCount < nullCount) {
                 logger.debug(s"has next: ${finishedCount} vs ${nullCount}")
                 resultQueue.take() match {
-                    case NullColumnVectorBatch => {
-                        logger.debug(s"found NullColumnVectorBatch, resultQueue size: ${resultQueue.size}")
+                    case Some(x: ColumnVectorBatch) => {
+                        if (x.size == 0) hasNext
+                        else cached = Some(x); true
+                    }
+                    case None => {
+                        logger.debug(s"found Null item, resultQueue size: ${resultQueue.size}")
                         finishedCount += 1
                         hasNext
                     }
-                    case FailedColumnVectorBatch => {
+                    case Some(_) => {
                         logger.error(s"found FailedColumnVectorBatch, resultQueue size: ${resultQueue.size}")
                         countFailed += 1
                         if (countFailed == 3) {
                             throw new Exception("Encountered 3 failed segments. Terminating.")
                         }
                         hasNext
-                    }
-                    case x: ColumnVectorBatch => {
-                        if (x.size == 0) hasNext
-                        else cached = x; true
                     }
                 }
             } else {

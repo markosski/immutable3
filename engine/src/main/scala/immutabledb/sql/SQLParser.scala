@@ -5,7 +5,7 @@ import immutabledb._
 
 // https://scala-lms.github.io/tutorials/query.html
 object SQLParser extends JavaTokenParsers {
-    def parseAll(input: String): Query = parseAll(query, input.toLowerCase) match {
+    def parseAll(input: String): Query = parseAll(query, input) match {
         case Success(res, _)  => res
         case res => throw new Exception(res.toString)
     }
@@ -56,7 +56,7 @@ object SQLParser extends JavaTokenParsers {
     }
 
     def filter: Parser[SelectADT] = {
-        filterAnd | filterOr | filterEQ | filterGT | filterLT
+        filterAnd | filterOr | filterEQ | filterEQString | filterGT | filterLT
     }
 
     def filterAnd: Parser[SelectADT] = {
@@ -74,6 +74,12 @@ object SQLParser extends JavaTokenParsers {
     def filterEQ: Parser[SelectADT] = {
         fieldIdent ~ "=" ~ value ^^ {
             case f ~ _ ~ v => Select(f, EQ(v.toDouble))
+        }
+    }
+
+    def filterEQString: Parser[SelectADT] = {
+        fieldIdent ~ "=" ~ "'" ~ value ~ "'" ^^ {
+            case f ~ _ ~ _ ~ v ~ _ => Select(f, Match(List(v)))
         }
     }
 

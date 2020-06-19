@@ -30,15 +30,6 @@ case class FilledColumnVectorBatch(
                              selectedInUse: Boolean // if not matching records set to false
                      ) extends ColumnVectorBatch
 
-case object NullColumnVectorBatch extends ColumnVectorBatch {
-  val oid = 0
-  val size = 0
-  val columnVectors = Array[ColumnVector]()
-  val columns = Array[Column]()
-  val selected = mutable.BitSet()
-  val selectedInUse = false
-}
-
 case object FailedColumnVectorBatch extends ColumnVectorBatch {
   val oid = 0
   val size = 0

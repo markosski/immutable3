@@ -4,19 +4,32 @@ import immutabledb._
 
 import scala.collection.mutable
 import scala.collection.mutable.{Buffer, HashMap}
+import java.math.BigInteger
+import OperatorAliasses.{AggMap, AggMapTuple}
+
 
 trait Aggregator[T, R] extends Product {
     val col: String
     val alias: String
     def add(v: T)
     def get: R
+    def combine(agg: Aggregator[T, R]): Aggregator[T, R]
+    def repr: String
     def make: Aggregator[T, R]
 }
 
 case class CountAggr(col: String, alias: String) extends Aggregator[Any, Long] {
     private var counter = 0L
     def add(v: Any) = counter += 1
+    def set(newCounter: Long) = {
+        counter = newCounter
+    }
+    def combine(agg: Aggregator[Any, Long]): Aggregator[Any, Long] = {
+       counter += agg.get 
+       this
+    }
     def get: Long = counter
+    def repr = get.toString
     def make = CountAggr(col, alias)
 }
 
@@ -24,6 +37,11 @@ case class MaxDoubleAggr(col: String, alias: String) extends Aggregator[Double, 
     private var max = Double.MinValue
     def add(v: Double) = if (v > max) max = v
     def get: Double = max
+    def combine(agg: Aggregator[Double, Double]): Aggregator[Double, Double] = {
+        add(agg.get)
+        this
+    }
+    def repr = get.toString
     def make = MaxDoubleAggr(col, alias)
 }
 
@@ -31,15 +49,59 @@ case class MinDoubleAggr(col: String, alias: String) extends Aggregator[Double, 
     private var min = Double.MaxValue
     def add(v: Double) = if (v < min) min = v
     def get: Double = min
+    def combine(agg: Aggregator[Double, Double]): Aggregator[Double, Double] = {
+        add(agg.get)
+        this
+    }
+    def repr = get.toString
     def make = MinDoubleAggr(col, alias)
 }
 
-case class AvgDoubleAggr(col: String, alias: String) extends Aggregator[Double, Double] {
-    private var avg = Buffer[Double]()
-    def add(v: Double) = avg += v
-    def get: Double = avg.sum / avg.size
+case class AvgDoubleAggr(col: String, alias: String) extends Aggregator[Double, (BigDecimal, Long)] {
+    private var sum = BigDecimal(0.0)
+    private var counter = 0L
+    def add(v: Double) = {
+        sum += v
+        counter += 1
+    }
+    def combine(agg: Aggregator[Double, (BigDecimal, Long)]): Aggregator[Double, (BigDecimal, Long)] = {
+        sum += agg.get._1
+        counter += agg.get._2
+        this
+    }
+    def get = (sum, counter)
+    def repr = (sum / counter).toString
     def make = AvgDoubleAggr(col, alias)
 }
+
+case class MaxStringAggr(col: String, alias: String) extends Aggregator[String, String] {
+    private var max = ""
+    def add(v: String) = 
+        if (max == "") max = v
+        else if (v > max) max = v
+    def get: String = max
+    def combine(agg: Aggregator[String, String]): Aggregator[String, String] = {
+        add(agg.get)
+        this
+    }
+    def repr = get.toString
+    def make = MaxStringAggr(col, alias)
+}
+
+case class MinStringAggr(col: String, alias: String) extends Aggregator[String, String] {
+    private var min = ""
+    def add(v: String) = 
+        if (min == "") min = v 
+        else if (v < min) min = v
+    def get: String = min
+    def combine(agg: Aggregator[String, String]): Aggregator[String, String] = {
+        add(agg.get)
+        this
+    }
+    def repr = get.toString
+    def make = MinStringAggr(col, alias)
+}
+
 
 object ProjectAggOp {
     def make(aggs: List[Aggregator[_, _]], groupBy: List[String]) = new Function1[ColumnVectorOperator, ProjectAggOp] {
@@ -50,16 +112,16 @@ object ProjectAggOp {
     } 
 }
 
-class ProjectAggOp(aggs: List[Aggregator[_, _]], op: ColumnVectorOperator, groupBy: List[String]) extends ProjectionOperator {
+class ProjectAggOp(aggs: List[Aggregator[_, _]], op: ColumnVectorOperator, groupBy: List[String]) extends ProjectionAggregateOperator {
     override def toString = s"aggs = $aggs, op = $op, groupBy = $groupBy"
 
     def iterator = new ProjectAggIterator
 
-    class ProjectAggIterator extends Iterator[Row] {
+    class ProjectAggIterator extends Iterator[AggMapTuple] {
         private val opIter = op.iterator
         private val cols: List[String] = aggs.map(_.col)
         private val aliases: Map[String, String] = aggs.map(x => (x.alias, x.col)).toMap
-        private val resultMap = mutable.LinkedHashMap[String, HashMap[String, Aggregator[_, _]]]()
+        private val resultMap = mutable.LinkedHashMap[String, AggMap]()
         private val aggsMap: HashMap[String, Aggregator[_, _]] = HashMap.apply(aggs.map(x => (x.alias, x)):_*)
         private var currVecBatch: ColumnVectorBatch = null
 
@@ -83,7 +145,7 @@ class ProjectAggOp(aggs: List[Aggregator[_, _]], op: ColumnVectorOperator, group
 
         private def getResultMapKey(xs: List[Any]) = xs.mkString("_")
 
-        private def getNewAggs(aggs: HashMap[String, Aggregator[_, _]]): HashMap[String, Aggregator[_, _]] = {
+        private def getNewAggs(aggs: AggMap): AggMap = {
             val newAggs = HashMap[String, Aggregator[_, _]]()
             aggs.foreach( keyVal => newAggs.put(keyVal._1, keyVal._2.make) )
             newAggs
@@ -137,6 +199,18 @@ class ProjectAggOp(aggs: List[Aggregator[_, _]], op: ColumnVectorOperator, group
                                 case _ => throw new Exception("bad aggregator for this data type")
                             }
                         }
+                        case StringColumnVector(_) => {
+                            val value = currVec.data(currVecBatchPos).asInstanceOf[String]
+                            resultMap.getOrElseUpdate(groupKey, getNewAggs(aggsMap))
+
+                            logger.debug(s"resultMap state: $resultMap")
+
+                            resultMap(groupKey)(alias) match {
+                                case aggr: CountAggr     => aggr.add(value)
+                                case aggr: MaxStringAggr => aggr.add(value)
+                                case _ => throw new Exception("bad aggregator for this data type")
+                            }
+                        }
                         case _ => throw new Exception(s"Cannot perform aggregations on vector type $currVec")
                     }
                 }
@@ -145,12 +219,8 @@ class ProjectAggOp(aggs: List[Aggregator[_, _]], op: ColumnVectorOperator, group
             logger.debug(s"resultMap: $resultMap")
         }
 
-        def next: Row = {
-            Row.fromSeq(resultMapIter.next._2.map( t => t._2.get ).toList)
-        }
+        def next: AggMapTuple = resultMapIter.next
 
-        def hasNext = {
-            resultMapIter.hasNext
-        }
+        def hasNext = resultMapIter.hasNext
     }
 }

@@ -1,15 +1,13 @@
 # ImmuTable3
 
-Columnar store with inverted indexes.
-
 ## CLI commands
 
 ```
-java -jar engine/target/scala-2.12/immutabledb-assembly-0.0.1-SNAPSHOT.jar -q "select id, age from test_100i where (age > 18 and age < 30) limit 10" -d "/Users/marcin/immutable3"
+java -jar engine/target/scala-2.12/immutabledb-assembly-0.0.1-SNAPSHOT.jar -q "select id, age from test_100 where (age > 18 and age < 30) limit 10" -d "/Users/marcin/immutable3"
 ```
 
 ```
-java -jar loader/target/scala-2.12/loader-assembly-0.0.1-SNAPSHOT.jar -t test_100i --cols id:DENSE_INT,state:DENSE_STRING:size=2,age:DENSE_TINYINT -d /Users/marcin/immutable3 -i data_100.csv --block-size 50 --segment-size 2
+java -jar loader/target/scala-2.12/loader-assembly-0.0.1-SNAPSHOT.jar -t test_100 --cols id:DENSE_INT,state:DENSE_STRING:size=2,age:DENSE_TINYINT -d /Users/marcin/immutable3 -i data_100.csv --block-size 50 --segment-size 2
 ```
 
 ## Considered Dependencies
@@ -51,9 +49,6 @@ java -jar loader/target/scala-2.12/loader-assembly-0.0.1-SNAPSHOT.jar -t test_10
 
 - Vector
     Vector is the unit of data in processing pipeline.
-
-- VectorQueue
-    Vectors are processed concurently,
 
 - SegmentManager
     Loads segments into memory
