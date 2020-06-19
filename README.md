@@ -10,16 +10,9 @@ java -jar engine/target/scala-2.12/immutabledb-assembly-0.0.1-SNAPSHOT.jar -q "s
 java -jar loader/target/scala-2.12/loader-assembly-0.0.1-SNAPSHOT.jar -t test_100 --cols id:DENSE_INT,state:DENSE_STRING:size=2,age:DENSE_TINYINT -d /Users/marcin/immutable3 -i data_100.csv --block-size 50 --segment-size 2
 ```
 
-## Considered Dependencies
-- indeedeng/util-mmap
-- dain/snappy
-- integer compression lemire/JavaFastPFOR
-- apache commons
-- guava
-
-# Objects and Modules
+# Concepts
 - Table
-    Stores information about what columns belong to the table.
+    Stores information about what columns are in the table.
     - path to directory with columns/segments
     - returns columns belonging to table
 
