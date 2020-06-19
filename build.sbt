@@ -1,24 +1,75 @@
-name := "immuTable3"
+ThisBuild / organization := "immutableDB"
+ThisBuild / scalaVersion := "2.12.11"
+ThisBuild / scalacOptions ++= Seq(
+  "-deprecation",
+  "-encoding", "UTF-8",
+  "-language:higherKinds",
+  "-language:postfixOps",
+  "-language:implicitConversions",
+  "-feature",
+  "-Ypartial-unification"
+  // "-Xfatal-warnings",
+)
+ThisBuild / version := "0.0.1-SNAPSHOT"
 
-version := "1.0"
-
-scalaVersion := "2.12.8"
-
-// scalacOptions += "-Ymacro-annotations"
-
-resolvers += "Sonatype OSS Snapshots" at
+ThisBuild / resolvers += "Sonatype OSS Snapshots" at
         "https://oss.sonatype.org/content/repositories/snapshots"
 
-libraryDependencies += "me.lemire.integercompression" % "JavaFastPFOR" % "0.1.10"
+val fatJarSettings = Seq(
+  test in assembly := {},
+  artifact in (Compile, assembly) := {
+    val art = (artifact in (Compile, assembly)).value
+    art.withClassifier(Some("assembly"))
+  },
+  assemblyMergeStrategy in assembly := {
+    case PathList("reference.conf") => MergeStrategy.concat
+    case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+    case x => MergeStrategy.first
+   },
+  addArtifact(artifact in (Compile, assembly), assembly)
+)
 
-libraryDependencies += "com.typesafe.scala-logging" % "scala-logging_2.12" % "3.5.0"
+lazy val core = (project in file("./core"))
+  .settings(
+    name := "core",
+    libraryDependencies ++= Seq(
+      Dependencies.pfor,
+      Dependencies.roaring,
+      Dependencies.snappy,
+      Dependencies.scopt,
+      Dependencies.parsers
+    )
+    ++ Dependencies.logging
+  )
 
-libraryDependencies += "org.slf4j" % "slf4j-log4j12" % "1.7.22"
+lazy val loader = (project in file("./loader"))
+  .dependsOn(core)
+  .settings(
+    name := "loader",
+    libraryDependencies ++= Seq(
+      Dependencies.scopt,
+      Dependencies.parsers
+    )
+    ++ Dependencies.logging
+  )
+  .settings(fatJarSettings: _*)
+  .settings(mainClass in assembly := Some("immutabledb.loader.LoaderCli"))
 
-libraryDependencies += "org.roaringbitmap" % "RoaringBitmap" % "0.6.29"
+lazy val engine = (project in file("./engine"))
+  .dependsOn(core)
+  .settings(
+    name := "immutabledb",
+    libraryDependencies ++= Seq(
+      Dependencies.pfor,
+      Dependencies.roaring,
+      Dependencies.snappy,
+      Dependencies.scopt,
+      Dependencies.parsers
+    )
+    ++ Dependencies.logging
+  )
+  .settings(fatJarSettings: _*)
+  .settings(mainClass in assembly := Some("immutabledb.SqlCli"))
 
-libraryDependencies += "com.storm-enroute" %% "scalameter" % "0.8.2"
-
-libraryDependencies += "org.iq80.snappy" % "snappy" % "0.4"
-
-libraryDependencies += "org.typelevel" %% "simulacrum" % "1.0.0"
+lazy val root = (project in file("."))
+   .aggregate(loader, engine)
