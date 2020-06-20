@@ -7,6 +7,8 @@ object Dependencies {
     lazy val snappy = "org.iq80.snappy" % "snappy" % "0.4"
     lazy val scopt = "com.github.scopt" %% "scopt" % "4.0.0-RC2"
     lazy val parsers = "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.2"
+    lazy val janino = "org.codehaus.janino" % "janino" % "3.1.0"
+    lazy val ujson = "com.lihaoyi" %% "ujson" % "0.9.5"
     lazy val logging = Seq(
         "com.typesafe.scala-logging" %% "scala-logging" % "3.9.2",
         "ch.qos.logback" % "logback-classic" % "1.2.3",

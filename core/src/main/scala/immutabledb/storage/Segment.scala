@@ -10,6 +10,7 @@ import immutabledb.codec._
 import immutabledb.{ConfigEnv, DataType}
 import util.StringUtils._
 import com.typesafe.scalalogging.LazyLogging
+import ujson.Value
 
 /**
   * Created by marcin1 on 3/8/17.
@@ -32,20 +33,27 @@ class SegmentStringStat(min: String, max: String) extends SegmentStats {
 case class SegmentMeta(blockOffsets: Array[Int]) extends Serializable
 
 object SegmentMeta {
+    def fromJsonValue(jsonValue: Value): SegmentMeta = {
+        val json = ujson.read(jsonValue)
+        SegmentMeta(json.obj("blockOffset").arr.map(x => x.num.toInt).toArray)
+    }
+
+    def toJsonValue(segmentMeta: SegmentMeta): Value = {
+        ujson.Obj(
+            "blockOffset" -> ujson.Arr(segmentMeta.blockOffsets.map(ujson.Num(_)):_*)
+        )
+    }
+
     def load(file: File): SegmentMeta = {
-        val fileIn = new FileInputStream(file)
-        val objectIn = new ObjectInputStream(fileIn)
-        val s = objectIn.readObject().asInstanceOf[SegmentMeta]
-        objectIn.close
-        fileIn.close
-        s
+        val jsonValue = ujson.read(file)
+        fromJsonValue(jsonValue)
     }
     def store(file: File, s: SegmentMeta) = {
-        val fileOut = new FileOutputStream(file)
-        val objectOut = new ObjectOutputStream(fileOut)
-        objectOut.writeObject(s)
-        objectOut.close
-        fileOut.close
+        val fileWriter = new FileWriter(file)
+
+        val json = toJsonValue(s)
+        ujson.writeTo(json, fileWriter)
+        fileWriter.close()
     }
 }
 
@@ -64,8 +72,8 @@ class SegmentWriter[E <: ConfigEnv](id: Int, blockSize: Int, tableName: String, 
       * This is a counter of how many blocks are in a segment
       */
     private val codec = Column.getCodec(column)
-    private val segmentPath = env.config.dataDir / tableName / s"${column.name}_$id.dat"
-    private val segmentMetaPath = env.config.dataDir / tableName / s"${column.name}_$id.meta"
+    private val segmentPath = List(env.config.dataDir, tableName, s"${column.name}_$id.dat").mkString("/")
+    private val segmentMetaPath = List(env.config.dataDir, tableName, s"${column.name}_$id.meta").mkString("/")
     private val segmentFile: RandomAccessFile = new RandomAccessFile(segmentPath, "rw")
     segmentFile.setLength(0) // delete contents
 

@@ -36,7 +36,7 @@ class SegmentManager(dataDir: String) extends LazyLogging {
 
     // for given table and column name return list of segments
     private[this] def getSegmentFiles(tableName: String, colName: String): List[File] = {
-        new File(dataDir / tableName).listFiles().toList
+        new File(List(dataDir, tableName).mkString("/")).listFiles().toList
             .filter(x => x.getName.startsWith(s"${colName}_") && x.getName.endsWith(".dat"))
             .sortBy(f => f.getName)
     }
@@ -59,7 +59,7 @@ class SegmentManager(dataDir: String) extends LazyLogging {
 
     // make sure metas are sorted in the list
     private[this] def getSegmentMetaFiles(tableName: String, colName: String): List[File] = {
-        new File(dataDir / tableName).listFiles().toList
+        new File(List(dataDir, tableName).mkString("/")).listFiles().toList
             .filter(x => x.getName.startsWith(s"${colName}_") && x.getName.endsWith(".meta"))
             .sortBy(f => f.getName)
     }

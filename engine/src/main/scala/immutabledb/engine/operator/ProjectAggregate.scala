@@ -121,6 +121,7 @@ class ProjectAggOp(aggs: List[Aggregator[_, _]], op: ColumnVectorOperator, group
         private val opIter = op.iterator
         private val cols: List[String] = aggs.map(_.col)
         private val aliases: Map[String, String] = aggs.map(x => (x.alias, x.col)).toMap
+        private val aliasesKeys = aliases.keys.toList
         private val resultMap = mutable.LinkedHashMap[String, AggMap]()
         private val aggsMap: HashMap[String, Aggregator[_, _]] = HashMap.apply(aggs.map(x => (x.alias, x)):_*)
         private var currVecBatch: ColumnVectorBatch = null
@@ -164,7 +165,7 @@ class ProjectAggOp(aggs: List[Aggregator[_, _]], op: ColumnVectorOperator, group
                 )
                 logger.debug(s"resultMap group key: $groupKey")
 
-                for (alias <- aliases.keys) {
+                for (alias <- aliasesKeys) {
                     val colName = aliases(alias)
                     val cIdx = aggsCols(colName)
                     val col = cols(cIdx)

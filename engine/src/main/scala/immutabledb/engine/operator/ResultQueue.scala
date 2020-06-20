@@ -21,13 +21,6 @@ class ResultQueueOp(resultQueue: BlockingQueue[Option[ColumnVectorBatch]], nullC
                 }
                 case None => resultQueue.take().get
             }
-            // if (cached != null) {
-            //     val vec = cached
-            //     cached = null
-            //     vec
-            // } else {
-            //     resultQueue.take()
-            // }
         }
 
         def hasNext: Boolean = {
