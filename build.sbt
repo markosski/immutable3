@@ -37,7 +37,8 @@ lazy val core = (project in file("./core"))
       Dependencies.roaring,
       Dependencies.snappy,
       Dependencies.scopt,
-      Dependencies.parsers
+      Dependencies.parsers,
+      Dependencies.ujson
     )
     ++ Dependencies.logging
   )
@@ -64,7 +65,8 @@ lazy val engine = (project in file("./engine"))
       Dependencies.roaring,
       Dependencies.snappy,
       Dependencies.scopt,
-      Dependencies.parsers
+      Dependencies.parsers,
+      Dependencies.janino
     )
     ++ Dependencies.logging
   )

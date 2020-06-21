@@ -1,0 +1,12 @@
+[
+    {
+        "name": "ch.qos.logback.classic.gaffer.GafferUtil",
+        "allPublicMethods":true,
+        "allDeclaredConstructors": true
+    },
+    {
+        "name": "ch.qos.logback.core.ConsoleAppender",
+        "allPublicMethods":true,
+        "allDeclaredConstructors": true
+    }
+]
