@@ -71,7 +71,7 @@ lazy val engine = (project in file("./engine"))
     ++ Dependencies.logging
   )
   .settings(fatJarSettings: _*)
-  .settings(mainClass in assembly := Some("immutabledb.SqlCli"))
+  .settings(mainClass in assembly := Some("immutabledb.ConsoleCli"))
 
 lazy val root = (project in file("."))
    .aggregate(loader, engine)
